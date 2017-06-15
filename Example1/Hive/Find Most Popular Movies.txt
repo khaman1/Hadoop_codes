@@ -1,0 +1,10 @@
+-- Create 2 tables u.data = u, u.item = u_item
+
+DROP VIEW IF EXISTS topMovieIDs;
+CREATE VIEW topMovieIDs AS
+SELECT movieID, count(movieID) AS ratingCount FROM u
+GROUP BY movieID
+ORDER BY ratingCount DESC;
+
+SELECT n.title, ratingCount FROM topMovieIDs t 
+JOIN u_item n ON t.movieID = n.movieID;

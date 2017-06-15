@@ -2,11 +2,14 @@ from pyspark.sql import SparkSession
 from pyspark.ml.recommendation import ALS
 from pyspark.sql import Row
 from pyspark.sql.functions import lit
+import sys, getopt, os
+
+os.system('export SPARK_MAJOR_VERSION=2')
 
 # Load up movie ID -> movie name dictionary
 def loadMovieNames():
     movieNames = {}
-    with open("ml-100k/u.item") as f:
+    with open("./../../u.item") as f:
         for line in f:
             fields = line.split('|')
             movieNames[int(fields[0])] = fields[1].decode('ascii', 'ignore')
@@ -17,8 +20,24 @@ def parseInput(line):
     fields = line.value.split()
     return Row(userID = int(fields[0]), movieID = int(fields[1]), rating = float(fields[2]))
 
+def cli(argv):
+    try:
+        opts, args = getopt.getopt(argv,"h", ["help","id="])
+    except getopt.GetoptError:
+        print 'Type -h to get details for arguments'
+        sys.exit(2)
+    
+    for opt, arg in opts:
+        if opt in ('-h','--help'):
+            print 'Input the userID to get the movie recommendations.'
+            print 'Example: python MovieRecommendationsALS.py -id 1'
+        elif opt in ('--id'):
+            userid = arg
+            return userid
 
 if __name__ == "__main__":
+    userid = cli(sys.argv[1:])
+    print "User ID: " + str(userid)
     # Create a SparkSession (the config bit is only for Windows!)
     spark = SparkSession.builder.appName("MovieRecs").getOrCreate()
 
@@ -26,7 +45,7 @@ if __name__ == "__main__":
     movieNames = loadMovieNames()
 
     # Get the raw data
-    lines = spark.read.text("hdfs:///user/maria_dev/ml-100k/u.data").rdd
+    lines = spark.read.text("hdfs:///user/maria_dev/u.data").rdd
 
     # Convert it to a RDD of Row objects with (userID, movieID, rating)
     ratingsRDD = lines.map(parseInput)
@@ -39,8 +58,8 @@ if __name__ == "__main__":
     model = als.fit(ratings)
 
     # Print out ratings from user 0:
-    print("\nRatings for user ID 0:")
-    userRatings = ratings.filter("userID = 0")
+    print("\nRatings for user ID " + str(userid) + " :")
+    userRatings = ratings.filter("userID = " + userid)
     for rating in userRatings.collect():
         print movieNames[rating['movieID']], rating['rating']
 
@@ -48,9 +67,9 @@ if __name__ == "__main__":
     # Find movies rated more than 100 times
     ratingCounts = ratings.groupBy("movieID").count().filter("count > 100")
     # Construct a "test" dataframe for user 0 with every movie rated more than 100 times
-    popularMovies = ratingCounts.select("movieID").withColumn('userID', lit(0))
+    popularMovies = ratingCounts.select("movieID").withColumn('userID', lit(int(userid)))
 
-    # Run our model on that list of popular movies for user ID 0
+    # Run our model on that list of popular movies for user ID
     recommendations = model.transform(popularMovies)
 
     # Get the top 20 movies with the highest predicted rating for this user
